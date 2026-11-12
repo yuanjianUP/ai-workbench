@@ -36,7 +36,7 @@ async function refresh() {
     description.textContent = `执行：${execution.id} · 任务：${execution.taskId}\n${execution.agent} · ${execution.workspace}\n状态：${execution.state === 'manually_checked' ? '已人工核对' : '未知'} · 终端：${execution.orcaId || '未知'}`; item.append(description);
     const logs = document.createElement('button'); logs.textContent = '读取日志'; logs.disabled = !execution.orcaId;
     logs.addEventListener('click', async () => { const output = document.querySelector('#logs'); output.textContent = `执行 ${execution.id}：正在读取日志…`; try { const result = await window.orca.plugin.request('executions.read', { id: execution.id }); output.textContent = `执行 ${execution.id}：\n` + result.lines.join('\n') + (result.truncated ? '\n（日志已截断）' : ''); } catch (error) { output.textContent = `执行 ${execution.id}：日志不可用`; status(`日志不可用：${error.message || error}`, true); } }); item.append(logs);
-    const review = document.createElement('button'); review.textContent = '打开代码审查'; review.addEventListener('click', async () => { try { await window.orca.plugin.request('workspaces.review', { id: execution.id }); } catch (error) { status(`无法打开审查：${error.message || error}`, true); } }); item.append(review); output.append(item);
+    const review = document.createElement('button'); review.textContent = '切换源码管理'; review.addEventListener('click', async () => { try { await window.orca.plugin.request('workspaces.review', { id: execution.id }); } catch (error) { status(`无法切换源码管理：${error.message || error}`, true); } }); item.append(review); output.append(item);
   }
 }
 document.querySelector('#credentials').addEventListener('submit', async event => {

@@ -8,4 +8,4 @@
 
 面板显示执行 ID 和任务 ID。需要重试时，先在 Orca 中确认相关终端和进程已结束，再根据[任务服务说明](../../services/task-service/README.md)执行人工核对命令；核对只解除重复启动的阻塞，不表示任务成功，也不会停止进程。插件宿主没有经验证的停止或恢复接口。
 
-已在 Orca 1.4.257 临时开发加载，面板无截图错误，worker 工作区列表返回成功；真实 worker 经临时测试处理程序连接 Windows 命名管道服务，创建、读取和错误令牌拒绝均成功，并用运行时句柄读取当前会话终端。面板任务操作、真实启动、任务终端读取和审查尚未验收。测试后已卸载开发目录。运行本地连接测试：`node --test plugins/task-workbench/worker.test.mjs`。
+已在 Orca 1.4.257 临时开发加载，面板无截图错误；真实 worker 已连接 Windows 命名管道服务，并在临时 Git worktree 启动 Codex、记录终端句柄和读取终端。面板任务操作和源码管理交互尚未端到端验收；终端启动不代表任务完成。测试后已卸载开发目录。运行本地连接测试：`node --test plugins/task-workbench/worker.test.mjs`。

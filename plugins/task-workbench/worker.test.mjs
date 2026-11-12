@@ -21,13 +21,15 @@ test('worker 经受保护的本机 socket 创建和读取任务，拒绝无效�
   let launches = 0;
   let launchFails = false;
   let readFails = false;
-  activate({ panels: { handle(name, handler) { handlers[name] = handler; } }, host: { async call(method) {
+  const hostCalls = [];
+  activate({ panels: { handle(name, handler) { handlers[name] = handler; } }, host: { async call(method, params) {
     if (method === 'secrets.protection') return { status: protection };
     if (method === 'settings.get') return { settings: { socketPath: socket } };
     if (method === 'secrets.get') return { value: token };
     if (method === 'workspace.list') return { workspaces: [{ id: 'workspace-1' }], truncated: false };
     if (method === 'agent.launch') { launches++; if (launchFails) throw new Error('连接中断'); return { terminalId: 'terminal-1' }; }
     if (method === 'terminal.read') { if (readFails) throw new Error('终端断开'); return { lines: ['日志'], truncated: false }; }
+    if (method === 'workspace.open' || method === 'commands.run') { hostCalls.push({ method, params }); return { ok: true }; }
     throw new Error('unexpected host call');
   } } });
   try {
@@ -48,6 +50,12 @@ test('worker 经受保护的本机 socket 创建和读取任务，拒绝无效�
     readFails = true;
     await assert.rejects(handlers['executions.read']({ id: executions[0].id }), /终端断开/);
     assert.equal((await handlers['executions.list']())[0].state, 'unknown');
+    await handlers['workspaces.review']({ id: executions[0].id });
+    assert.deepEqual(hostCalls, [
+      { method: 'workspace.open', params: { workspaceId: 'workspace-1' } },
+      { method: 'commands.run', params: { action: 'sidebar.sourceControl.toggle' } }
+    ]);
+    await assert.rejects(handlers['workspaces.review']({ id: 'missing' }), /执行记录不存在/);
     await assert.rejects(handlers['executions.start'](manual), /必须先核对/);
     assert.equal(launches, 1);
     const ambiguous = await handlers['tasks.create']({ text: '启动结果不确定' });
