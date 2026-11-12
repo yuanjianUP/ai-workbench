@@ -1,0 +1,16 @@
+{
+  "manifestVersion": 2,
+  "execution": "trusted-worker",
+  "id": "task-workbench",
+  "name": "AI 工作台",
+  "version": "0.1.0",
+  "description": "连接本机任务服务，创建和查看任务。",
+  "engines": { "orca": ">=1.4.248" },
+  "pluginApi": 1,
+  "main": "worker.mjs",
+  "contributes": {
+    "panels": [{ "id": "tasks", "title": "工作台任务", "icon": "blocks", "entry": "panel.html", "ui": "html" }],
+    "settings": [{ "key": "socketPath", "title": "任务服务 socket 路径", "type": "string", "default": "", "description": "任务服务与 Orca worker 须位于同一系统。" }]
+  },
+  "capabilities": [{ "kind": "settings:own" }, { "kind": "secrets:own" }, { "kind": "workspace:read" }, { "kind": "workspace:write" }, { "kind": "agent:launch" }, { "kind": "terminal:read" }]
+}

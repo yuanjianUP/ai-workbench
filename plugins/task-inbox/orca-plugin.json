@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/stablyai/orca/main/docs/schemas/plugins/orca-plugin.v2.schema.json",
+  "manifestVersion": 2,
+  "execution": "sandboxed-ui",
+  "id": "task-inbox",
+  "name": "AI 工作台任务收件箱",
+  "version": "0.1.0",
+  "description": "在 Orca 中记录和查看手动任务。",
+  "engines": { "orca": ">=1.4.246" },
+  "pluginApi": 1,
+  "contributes": {
+    "panels": [{ "id": "inbox", "title": "任务收件箱", "icon": "blocks", "entry": "panel.html", "ui": "html" }]
+  },
+  "capabilities": [{ "kind": "storage:own" }]
+}

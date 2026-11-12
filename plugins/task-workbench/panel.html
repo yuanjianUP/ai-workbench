@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>工作台任务</title>
+<style>
+body { font: 14px system-ui, sans-serif; color: var(--orca-foreground); background: var(--orca-background); padding: 12px; }
+form { display: grid; gap: 8px; margin: 12px 0; } textarea, input, button { font: inherit; padding: 8px; } textarea { min-height: 80px; } li { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; } .error { color: var(--orca-destructive); }
+</style></head>
+<body>
+<h2>工作台任务</h2>
+<p>在插件设置中填写本机任务服务 socket 路径。首次使用时保存服务令牌。</p>
+<form id="credentials"><label for="token">任务服务令牌</label><input id="token" type="password" autocomplete="off" required><button>保存令牌</button></form>
+<form id="task-form"><label for="task">任务内容</label><textarea id="task" maxlength="4000" required></textarea><button>保存任务</button></form>
+<button id="refresh" type="button">刷新</button><p id="message" role="status"></p><ul id="tasks"></ul>
+<h3>手动启动</h3><form id="start-form"><label for="task-id">任务</label><select id="task-id" required></select><label for="workspace">工作区</label><select id="workspace" required></select><label for="agent">Agent 标识</label><input id="agent" placeholder="例如 codex" required><button>启动 Agent</button></form>
+<p>启动只表示请求已提交；执行结果未知。插件无法确认停止或恢复，请在 Orca 中操作并核对进程。确认进程结束后，可通过服务命令行人工核对执行记录，再重新启动任务。</p><h3>执行记录</h3><ul id="executions"></ul><pre id="logs"></pre>
+<script>
+const message = document.querySelector('#message');
+const list = document.querySelector('#tasks');
+function status(text, error = false) { message.textContent = text; message.className = error ? 'error' : ''; }
+async function refresh() {
+  const tasks = await window.orca.plugin.request('tasks.list', {});
+  if (!Array.isArray(tasks)) throw new Error('任务服务返回格式错误');
+  const taskSelect = document.querySelector('#task-id'); const selected = taskSelect.value; taskSelect.replaceChildren();
+  list.replaceChildren();
+  for (const task of tasks) { const item = document.createElement('li'); item.textContent = `${task.text}\n${task.source} · ${task.status} · ${task.createdAt}`; list.append(item); const option = document.createElement('option'); option.value = task.id; option.textContent = task.text; taskSelect.append(option); }
+  if (selected) taskSelect.value = selected;
+  const result = await window.orca.plugin.request('workspaces.list', {});
+  const workspaceSelect = document.querySelector('#workspace'); const previous = workspaceSelect.value; workspaceSelect.replaceChildren();
+  if (result.truncated) throw new Error('工作区列表不完整，无法安全启动');
+  for (const workspace of result.workspaces) { const option = document.createElement('option'); option.value = workspace.id; option.textContent = `${workspace.name} (${workspace.path})`; workspaceSelect.append(option); }
+  if (previous) workspaceSelect.value = previous;
+  const executions = await window.orca.plugin.request('executions.list', {});
+  const output = document.querySelector('#executions'); output.replaceChildren();
+  for (const execution of executions) {
+    const item = document.createElement('li'); const description = document.createElement('div');
+    description.textContent = `执行：${execution.id} · 任务：${execution.taskId}\n${execution.agent} · ${execution.workspace}\n状态：${execution.state === 'manually_checked' ? '已人工核对' : '未知'} · 终端：${execution.orcaId || '未知'}`; item.append(description);
+    const logs = document.createElement('button'); logs.textContent = '读取日志'; logs.disabled = !execution.orcaId;
+    logs.addEventListener('click', async () => { const output = document.querySelector('#logs'); output.textContent = `执行 ${execution.id}：正在读取日志…`; try { const result = await window.orca.plugin.request('executions.read', { id: execution.id }); output.textContent = `执行 ${execution.id}：\n` + result.lines.join('\n') + (result.truncated ? '\n（日志已截断）' : ''); } catch (error) { output.textContent = `执行 ${execution.id}：日志不可用`; status(`日志不可用：${error.message || error}`, true); } }); item.append(logs);
+    const review = document.createElement('button'); review.textContent = '打开代码审查'; review.addEventListener('click', async () => { try { await window.orca.plugin.request('workspaces.review', { id: execution.id }); } catch (error) { status(`无法打开审查：${error.message || error}`, true); } }); item.append(review); output.append(item);
+  }
+}
+document.querySelector('#credentials').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.querySelector('#token');
+  try {
+    if (!/^[a-f0-9]{64}$/.test(input.value)) throw new Error('令牌须为 64 位小写十六进制');
+    const protection = await window.orca.host.call('secrets.protection');
+    if (protection.status !== 'os-keyring') throw new Error('系统密钥保护不可用');
+    await window.orca.host.call('secrets.set', { key: 'task-api-token', value: input.value });
+    input.value = ''; status('令牌已保存');
+  } catch (error) { status(error.message || String(error), true); }
+});
+document.querySelector('#task-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const input = document.querySelector('#task'); const button = event.submitter; button.disabled = true;
+  try { await window.orca.plugin.request('tasks.create', { text: input.value }); input.value = ''; status('已保存'); try { await refresh(); } catch { status('任务已保存，但列表刷新失败', true); } }
+  catch (error) { status(`无法确认保存结果：${error.message || error}。请刷新列表后再试。`, true); }
+  finally { button.disabled = false; }
+});
+document.querySelector('#refresh').addEventListener('click', () => refresh().then(() => status('已刷新')).catch(error => status(error.message || String(error), true)));
+document.querySelector('#start-form').addEventListener('submit', async event => {
+  event.preventDefault(); const button = event.submitter; button.disabled = true;
+  try { const result = await window.orca.plugin.request('executions.start', { mode: 'manual', taskId: document.querySelector('#task-id').value, workspace: document.querySelector('#workspace').value, agent: document.querySelector('#agent').value }); status(`已启动终端 ${result.terminalId}；任务结果未知`); try { await refresh(); } catch { status(`已启动终端 ${result.terminalId}，但列表刷新失败；任务结果未知`, true); } }
+  catch (error) { status(`无法确认启动结果：${error.message || error}。请先核对执行记录。`, true); }
+  finally { button.disabled = false; }
+});
+refresh().catch(error => status(error.message || String(error), true));
+</script></body></html>

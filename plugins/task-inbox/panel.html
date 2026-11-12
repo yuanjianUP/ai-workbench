@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>任务收件箱</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; color: var(--orca-foreground); background: var(--orca-background); padding: 12px; }
+    form { display: grid; gap: 8px; }
+    textarea, button { font: inherit; padding: 8px; }
+    textarea { resize: vertical; min-height: 80px; }
+    button { cursor: pointer; }
+    li { margin: 12px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .error { color: #d94b4b; }
+  </style>
+</head>
+<body>
+  <h2>任务收件箱</h2>
+  <p>记录手动任务，执行和外部接入将在后续版本提供。</p>
+  <form id="form">
+    <label for="task">任务内容</label>
+    <textarea id="task" required maxlength="4000"></textarea>
+    <button id="add" type="submit">保存任务</button>
+  </form>
+  <button id="export" type="button">导出原型任务</button>
+  <p id="message" role="status"></p>
+  <ul id="tasks"></ul>
+  <script>
+    const form = document.getElementById('form');
+    const input = document.getElementById('task');
+    const button = document.getElementById('add');
+    const message = document.getElementById('message');
+    const list = document.getElementById('tasks');
+    const exportButton = document.getElementById('export');
+    const key = 'manual-tasks-v1';
+    function render(tasks) {
+      list.replaceChildren();
+      for (const task of tasks) {
+        const item = document.createElement('li');
+        item.textContent = task.text;
+        list.append(item);
+      }
+    }
+    async function readTasks() {
+      const { value } = await window.orca.host.call('storage.get', { key });
+      if (value === null) return [];
+      if (!Array.isArray(value) || value.some(task => !task || typeof task.text !== 'string')) throw new Error('保存的任务数据格式不正确');
+      return value;
+    }
+    async function refresh() { render(await readTasks()); }
+    function showError(error) {
+      message.className = 'error';
+      message.textContent = `读取或保存失败：${error.message || error}`;
+    }
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      button.disabled = true;
+      try {
+        const tasks = await readTasks();
+        tasks.unshift({ text, createdAt: new Date().toISOString() });
+        await window.orca.host.call('storage.set', { key, value: tasks });
+        render(tasks);
+        input.value = '';
+        message.className = '';
+        message.textContent = '已保存';
+      } catch (error) { showError(error); }
+      finally { button.disabled = false; }
+    });
+    exportButton.addEventListener('click', async () => {
+      exportButton.disabled = true;
+      try {
+        const tasks = await readTasks();
+        const result = await window.orca.files.saveAs({
+          suggestedName: `task-inbox-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+          mimeType: 'application/json',
+          data: JSON.stringify(tasks, null, 2)
+        });
+        if (result.status !== 'saved' && result.status !== 'cancelled') throw new Error('无法确认导出结果');
+        message.className = '';
+        message.textContent = result.status === 'saved' ? '任务已导出' : '已取消导出';
+      } catch (error) { showError(error); }
+      finally { exportButton.disabled = false; }
+    });
+    refresh().catch(showError);
+  </script>
+</body>
+</html>
