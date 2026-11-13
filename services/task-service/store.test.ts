@@ -63,6 +63,30 @@ test('来源事件校验、授权、审计和重启去重', () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('自动执行授权按可信来源范围和发送者匹配，默认拒绝并持久审计', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'task-auto-rules-'));
+  const path = join(dir, 'tasks.db');
+  let store = new TaskStore(path);
+  try {
+    const github = store.ingestEvent({ source: 'github', id: 'gh', sender: '42', text: '任务', context: { repositoryId: '99' } }, true, ['42']).taskId as string;
+    const feishu = store.ingestEvent({ source: 'feishu', id: 'fs', sender: 'ou_1', text: '任务', context: { tenant: 'tenant', chat: 'oc_1' } }, true, ['ou_1']).taskId as string;
+    const manual = store.create('手动任务');
+    assert.deepEqual(store.automationDecision(github), { decision: 'deny' });
+    store.setAutomationRule('github', '99', '42', 'deny');
+    assert.deepEqual(store.automationDecision(github), { decision: 'deny' });
+    store.setAutomationRule('github', '99', '42', 'allow');
+    store.setAutomationRule('feishu', 'tenant/oc_1', 'ou_1', 'allow');
+    assert.deepEqual(store.automationDecision(github), { decision: 'allow' });
+    assert.deepEqual(store.automationDecision(feishu), { decision: 'allow' });
+    assert.deepEqual(store.automationDecision(manual.id), { decision: 'deny' });
+    assert.throws(() => store.setAutomationRule('github', '*', '42', 'allow'), /无效/);
+    store.close(); store = new TaskStore(path);
+    assert.deepEqual(store.automationDecision(github), { decision: 'allow' });
+    assert.deepEqual(store.automationAuthorizationAudit().map(row => row.decision), ['deny', 'deny', 'allow', 'allow', 'deny', 'allow']);
+    assert.equal(store.automationRules().length, 2);
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('反馈超时或重启后不会重复发送，成功结果可审计', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'task-feedback-'));
   try {

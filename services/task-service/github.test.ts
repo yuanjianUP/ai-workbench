@@ -23,7 +23,7 @@ test('GitHub 签名、授权与重启去重', () => {
     assert.equal(receiveGithub(store, raw, headers, config).outcome, 'duplicate');
     assert.equal(receiveGithub(store, raw, { ...headers, delivery: 'different-delivery' }, config).outcome, 'duplicate');
     assert.equal(store.list().length, 1);
-    assert.deepEqual(store.sourceContext(store.list()[0].id as string), { source: 'github', context: { owner: 'owner', repo: 'repo', number: 7 } });
+    assert.deepEqual(store.sourceContext(store.list()[0].id as string), { source: 'github', context: { owner: 'owner', repo: 'repo', number: 7, repositoryId: '99' } });
     assert.equal(store.list()[0].status, 'pending');
     store.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }

@@ -41,6 +41,14 @@ node services/task-service/server.ts
 
 执行意图会以未知状态持久化，并阻止同一任务再次创建意图。`node services/task-service/cli.ts executions` 可查看记录和人工核对审计；只有在 Orca 中独立确认相关执行及其进程均已结束后，才能运行 `node services/task-service/cli.ts review-execution <执行ID> --confirm-not-running '核对依据'` 解除阻塞。该操作记录人工核对，并不表示任务成功，也不会停止进程或自动启动任务。当前尚未接入 Orca 执行与自动状态核对。
 
+Docker 自动执行仍处于设计和验证阶段，当前不会启动。`api-proxy.mjs` 是未接入的凭据代理原型：仅接受授权的 `POST /v1/responses`，以代理持有的独立密钥请求固定的 OpenAI API 地址，不把真实密钥传给调用方。`TASK_CODEX_BINARY=<Linux Codex 二进制路径> python3 services/task-service/docker-isolation-smoke.py` 可在已有 `python:3.11-slim-bookworm` 镜像时复现双容器模拟演练；它使用假密钥、模拟上游，不拉取镜像。真实 API、凭据管理、任务 worktree 及容器生命周期尚未联调，不能把原型视为可部署的安全边界。背景参见 [OpenAI 的沙箱安全说明](https://developers.openai.com/api/docs/guides/agents-api/environments/security)。
+
+`docker-sandbox.mjs` 是未接入的生命周期原型：要求本机 Docker、seccomp、不可变镜像 ID 和 isolated gateway 内部网络，校验容器的用户、资源限制、挂载和只读 Git 元数据后启动。`node services/task-service/docker-sandbox-smoke.mjs` 使用模拟 Agent 测试启动及清理；设置 `TASK_CODEX_BINARY` 后运行 `node services/task-service/docker-codex-proxy-smoke.mjs` 可用真实 Codex 和模拟上游验证链路。这些测试不会访问真实 API。Docker 普通 internal 网络仍可能访问宿主网关，不能替代 isolated gateway 模式，见 [Docker 文档](https://docs.docker.com/reference/cli/docker/network/create/)。
+
+`prepare-checkout.mjs` 提供尚未接入执行器的工作目录原型：从可信配置的本地仓库和指定分支创建独立浅克隆，不继承宿主全局 Git 配置或钩子，并移除源仓库远程地址。该克隆不是 Git 的共享 worktree，且会把所选提交中的文件交给 Agent；不得把含不应交给 Agent 的文件作为任务输入。Linux 和 Windows 的临时仓库浅克隆已测试，变更回收尚未验证。
+
+自动执行授权规则可通过 `node services/task-service/cli.ts automation-rules` 查看，用 `automation-rule <github|feishu> <范围> <发送者> <allow|deny> --confirm` 显式设置，并用 `automation-audit` 查看授权判断审计。GitHub 的范围是仓库数字 ID，发送者是数字用户 ID；飞书的范围是 `tenant_key/chat_id`，发送者为 open_id。未设置规则默认拒绝；仅对验签并授权后保存了来源范围的事件可匹配。设置 `allow` 只保存授权意图，当前隔离执行器未接通，仍不会启动任务；旧任务若缺少来源范围同样无法匹配。
+
 存储层定义了 GitHub 和飞书来源事件模型，以 `(source, event_id)` 去重，按来源适配器提供的验证结果与发送者名单决定是否创建待处理任务，并记录每次处理结果。此内部接口不负责验签，不能将客户端提供的验证结果视为可信。
 
 反馈规则可以通过 `node services/task-service/cli.ts feedback-rules` 查看，并通过 `node services/task-service/cli.ts feedback-rule <任务ID> <comment|reply|pull_request> <allow|deny> --confirm` 按任务和操作类型设置。没有规则时默认拒绝；规则和反馈审计随数据库保存。设置允许规则本身不会发送反馈，也不会启用自动执行。

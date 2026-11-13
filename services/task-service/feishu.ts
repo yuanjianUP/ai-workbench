@@ -23,6 +23,6 @@ export function receiveFeishu(store: TaskStore, raw: string | Buffer, headers: {
   try { text = JSON.parse(message?.content).text; } catch { throw new Error('消息格式无效'); }
   if (data.header?.event_type !== 'im.message.receive_v1' || data.event?.sender?.sender_type !== 'user' || message?.message_type !== 'text' || typeof data.header?.event_id !== 'string' || typeof sender !== 'string' || typeof text !== 'string') throw new Error('不支持或无效的飞书事件');
   const scopeAllowed = data.header.app_id === config.appId && config.tenants.includes(data.header.tenant_key) && config.chats.includes(message.chat_id);
-  const context = typeof message.message_id === 'string' && /^om_[a-zA-Z0-9]+$/.test(message.message_id) ? { messageId: message.message_id } : undefined;
+  const context = typeof message.message_id === 'string' && /^om_[a-zA-Z0-9]+$/.test(message.message_id) ? { messageId: message.message_id, tenant: data.header.tenant_key, chat: message.chat_id } : undefined;
   return store.ingestEvent({ source: 'feishu', id: data.header.event_id, sender, text, context }, verified && scopeAllowed, config.senders);
 }

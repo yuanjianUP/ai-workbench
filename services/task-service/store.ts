@@ -45,6 +45,13 @@ export class TaskStore {
       task_id TEXT NOT NULL, kind TEXT NOT NULL, decision TEXT NOT NULL,
       updated_at TEXT NOT NULL, PRIMARY KEY (task_id, kind)
     )`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS automation_rules (
+      source TEXT NOT NULL, scope TEXT NOT NULL, sender TEXT NOT NULL,
+      decision TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (source, scope, sender)
+    ); CREATE TABLE IF NOT EXISTS automation_authorization_audit (
+      task_id TEXT NOT NULL, source TEXT NOT NULL, scope TEXT NOT NULL, sender TEXT NOT NULL,
+      decision TEXT NOT NULL, recorded_at TEXT NOT NULL
+    )`);
     this.db.exec(`CREATE TABLE IF NOT EXISTS executions (
       id TEXT PRIMARY KEY, task_id TEXT NOT NULL, workspace TEXT NOT NULL,
       agent TEXT NOT NULL, orca_id TEXT, state TEXT NOT NULL, updated_at TEXT NOT NULL
@@ -95,6 +102,33 @@ export class TaskStore {
     const row = this.db.prepare('SELECT source, context FROM source_context WHERE task_id = ?').get(taskId);
     return row ? { source: row.source as string, context: JSON.parse(row.context as string) } : undefined;
   }
+
+  setAutomationRule(source: 'github' | 'feishu', scope: string, sender: string, decision: 'allow' | 'deny') {
+    if (!['github', 'feishu'].includes(source) || typeof scope !== 'string' || !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)?$/.test(scope) || typeof sender !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(sender) || !['allow', 'deny'].includes(decision)) throw new Error('自动执行规则无效');
+    this.db.prepare(`INSERT INTO automation_rules VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (source, scope, sender) DO UPDATE SET decision = excluded.decision, updated_at = excluded.updated_at`)
+      .run(source, scope, sender, decision, new Date().toISOString());
+  }
+
+  automationRules() { return this.db.prepare('SELECT source, scope, sender, decision, updated_at AS updatedAt FROM automation_rules ORDER BY source, scope, sender').all(); }
+
+  automationDecision(taskId: string) {
+    const task = this.get(taskId);
+    if (!task) throw new Error('任务不存在');
+    const source = this.sourceContext(taskId);
+    const event = this.db.prepare(`SELECT audit.sender FROM source_events event JOIN event_audit audit
+      ON audit.source = event.source AND audit.event_id = event.event_id AND audit.outcome = 'accepted'
+      WHERE event.task_id = ? LIMIT 1`).get(taskId);
+    const scope = source?.source === 'github' ? source.context.repositoryId : source?.source === 'feishu' && source.context.tenant && source.context.chat ? `${source.context.tenant}/${source.context.chat}` : '';
+    const sender = typeof event?.sender === 'string' ? event.sender : '';
+    const sourceName = typeof source?.source === 'string' ? source.source : String(task.source);
+    const rule = typeof scope === 'string' && sender ? this.db.prepare('SELECT decision FROM automation_rules WHERE source = ? AND scope = ? AND sender = ?').get(sourceName, scope, sender) : undefined;
+    const decision = rule?.decision === 'allow' ? 'allow' : 'deny';
+    this.db.prepare('INSERT INTO automation_authorization_audit VALUES (?, ?, ?, ?, ?, ?)').run(taskId, sourceName, typeof scope === 'string' ? scope : '', sender, decision, new Date().toISOString());
+    return { decision };
+  }
+
+  automationAuthorizationAudit() { return this.db.prepare('SELECT task_id AS taskId, source, scope, sender, decision, recorded_at AS recordedAt FROM automation_authorization_audit ORDER BY rowid').all(); }
 
   setFeedbackRule(taskId: string, kind: FeedbackKind, decision: 'allow' | 'deny') {
     if (!this.get(taskId) || !['comment', 'reply', 'pull_request'].includes(kind) || !['allow', 'deny'].includes(decision)) throw new Error('反馈规则无效');

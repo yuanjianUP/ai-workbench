@@ -28,7 +28,7 @@ test('飞书加密事件、签名、授权和重启去重', () => {
     store.close(); store = new TaskStore(path);
     assert.equal(receiveFeishu(store, raw, headers, config).outcome, 'duplicate');
     assert.equal(store.list().length, 1);
-    assert.deepEqual(store.sourceContext(store.list()[0].id as string), { source: 'feishu', context: { messageId: 'om_abc123' } });
+    assert.deepEqual(store.sourceContext(store.list()[0].id as string), { source: 'feishu', context: { messageId: 'om_abc123', tenant: 'tenant', chat: 'chat' } });
     assert.equal(store.list()[0].status, 'pending');
     assert.throws(() => receiveFeishu(store, raw, headers, { ...config, verificationToken: 'wrong' }));
     store.close();

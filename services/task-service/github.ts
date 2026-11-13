@@ -19,6 +19,6 @@ export function receiveGithub(store: TaskStore, raw: string | Buffer, headers: {
   const name = payload?.repository?.name;
   const number = payload?.issue?.number;
   const context = typeof owner === 'string' && /^[a-zA-Z0-9-]{1,39}$/.test(owner) && typeof name === 'string' && /^[a-zA-Z0-9_.-]{1,100}$/.test(name) && name !== '.' && name !== '..' && Number.isSafeInteger(number) && number > 0
-    ? { owner, repo: name, number } : undefined;
+    ? { owner, repo: name, number, repositoryId: repository } : undefined;
   return store.ingestEvent({ source: 'github', id: `issues-opened:${repository}:${issueId}`, sender, text, context }, verified && config.repositories.includes(repository), config.senders);
 }

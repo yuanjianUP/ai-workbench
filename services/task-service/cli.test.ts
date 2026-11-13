@@ -22,5 +22,11 @@ test('反馈规则必须确认才能修改，且重启后保留', () => {
     assert.equal(JSON.parse(run('feedback-rules').stdout)[0].decision, 'allow');
     assert.equal(run('feedback-rule', task.id, 'comment', 'deny', '--confirm').status, 0);
     assert.equal(JSON.parse(run('feedback-rules').stdout)[0].decision, 'deny');
+    assert.notEqual(run('automation-rule', 'github', '99', '42', 'allow').status, 0);
+    assert.deepEqual(JSON.parse(run('automation-rules').stdout), []);
+    const automation = run('automation-rule', 'github', '99', '42', 'allow', '--confirm');
+    assert.equal(automation.status, 0);
+    assert.equal(JSON.parse(automation.stdout).executionAvailable, false);
+    assert.equal(JSON.parse(run('automation-rules').stdout)[0].decision, 'allow');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
